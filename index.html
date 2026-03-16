@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Suraksha 360 — Prediction Dashboard</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root { --bg: #071025; --card: rgba(13,18,28,0.6); --muted: #9aa4b2; }
+    body { font-family: 'Inter', sans-serif; background: linear-gradient(180deg,#030615 0%, #071025 100%); color: #e6eef8; }
+    .glass { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.03); }
+    .fade-in { animation: fadeIn .28s ease both; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px);} to { opacity: 1; transform: translateY(0);} }
+    .thin-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+    .thin-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 8px; }
+
+    .leaflet-popup-content-wrapper { background: #0b1724; color: #e6eef8; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+    .leaflet-popup-content { font-family: 'Inter', sans-serif; }
+    .leaflet-popup-tip { background: #0b1724; }
+    .leaflet-popup-close-button { color: #e6eef8 !important; }
+
+    /* Forecast chart */
+    #forecastChart {
+      height: 200px;
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      padding: 8px;
+    }
+    .forecast-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      flex: 1;
+      min-width: 36px;
+    }
+    .forecast-bar {
+      width: 36px;
+      border-radius: 6px 6px 0 0;
+      transition: transform 0.18s ease, height 0.18s ease, box-shadow 0.18s ease;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.25) inset;
+      display: block;
+    }
+    .forecast-bar:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 8px 18px rgba(0,0,0,0.45) inset;
+    }
+    .chart-label { font-size: 12px; color: #9aa4b2; margin-top: 8px; }
+
+    /* small sos marker style (optional) */
+    .sos-marker { font-size: 20px; }
+  </style>
+</head>
+<body>
+
+  <!-- Login Page -->
+  <div id="loginPage" class="min-h-screen flex items-center justify-center p-6">
+    <div class="w-full max-w-lg glass rounded-2xl p-8 shadow-xl fade-in">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 bg-blue-600/20 rounded-full flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="text-blue-300"><path d="M12 2l7 3v5c0 5-3.5 9.6-7 11-3.5-1.4-7-6-7-11V5l7-3z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <div>
+                    <div class="text-2xl font-semibold">Suraksha 360</div>
+                    <div class="text-sm text-slate-400">Disaster Prediction Dashboard</div>
+                </div>
+            </div>
+        </div>
+        <form id="loginForm" class="space-y-4" onsubmit="event.preventDefault(); handleLogin();">
+            <div><label class="text-sm text-slate-300">Email</label><input id="loginEmail" type="email" required value="admin@example.com" class="mt-2 w-full p-3 rounded-lg bg-[#071427] border border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"/></div>
+            <div><label class="text-sm text-slate-300">Password</label><div class="mt-2 relative"><input id="loginPassword" type="password" required value="12345" class="w-full p-3 rounded-lg bg-[#071427] border border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"/><button type="button" onclick="toggleShowPassword(event)" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm">Show</button></div></div>
+            <div><button type="submit" class="w-full py-3 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 font-semibold hover:from-blue-700 hover:to-indigo-700">Sign in</button></div>
+        </form>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app" class="hidden min-h-screen">
+    <header class="flex items-center justify-between px-6 py-6">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2l7 3v5c0 5-3.5 9.6-7 11-3.5-1.4-7-6-7-11V5l7-3z" stroke="white" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div><div class="text-2xl font-semibold">Suraksha 360</div><div class="text-sm text-slate-400">Predict and monitor disasters</div></div>
+      </div>
+      <div class="flex items-center gap-4"><div class="text-slate-400 text-sm">Signed in as <span id="signedInEmail" class="font-medium"></span></div><button onclick="logout()" class="px-4 py-2 rounded-lg bg-[#0b1724] border border-white/5 hover:bg-[#0a1420]">Logout</button></div>
+    </header>
+
+    <main class="px-6 pb-20 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Left Column -->
+      <section class="lg:col-span-2 space-y-6">
+        <div class="glass rounded-2xl p-6">
+            <div class="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                <div>
+                    <h1 class="text-2xl font-bold">Risk Prediction Center</h1>
+                    <p class="text-slate-400 mt-1">Select a disaster type to view predictions.</p>
+                </div>
+                <div class="flex gap-2 w-full md:w-auto">
+                    <button onclick="fetchPredictions('landslide')" class="flex-1 px-4 py-2 rounded-lg bg-amber-600 text-sm font-medium hover:bg-amber-500">Landslides</button>
+                    <button onclick="fetchPredictions('flood')" class="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-sm font-medium hover:bg-blue-500">Floods</button>
+                    <button onclick="fetchPredictions('earthquake')" class="flex-1 px-4 py-2 rounded-lg bg-red-600 text-sm font-medium hover:bg-red-500">Earthquakes</button>
+                </div>
+            </div>
+            <div id="indiaMap" class="bg-[#071427] rounded-lg relative w-full h-96 z-10 mt-6"></div>
+        </div>
+
+        <div class="glass rounded-2xl p-6">
+            <h3 id="forecastTitle" class="text-xl font-semibold">7-Day Risk Forecast</h3>
+            <p id="forecastSubtitle" class="text-slate-400 text-sm mt-1">Select a disaster type or click a map marker to view forecast.</p>
+            <div id="forecastChart" class="mt-4"></div>
+        </div>
+      </section>
+
+      <!-- Right Column -->
+      <aside class="space-y-6">
+        <div class="glass rounded-2xl p-4">
+          <h4 class="font-semibold">Active Alerts (Today)</h4>
+          <ul id="activeAlertsList" class="mt-2 space-y-2 thin-scroll max-h-80 overflow-auto"></ul>
+        </div>
+      </aside>
+    </main>
+
+    <!-- SOS Button (inside app only) -->
+    <button id="sosBtn"
+      onclick="sendSOS()"
+      class="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-red-600 text-white shadow-lg hover:bg-red-700 flex items-center justify-center z-50">
+      SOS
+    </button>
+  </div>
+
+  <script>
+    function toggleShowPassword(event) {
+      const pass = document.getElementById("loginPassword");
+      const btn = event.currentTarget;
+      if (pass.type === "password") { pass.type = "text"; btn.textContent = "Hide"; }
+      else { pass.type = "password"; btn.textContent = "Show"; }
+    }
+  </script>
+
+  <script>
+    const FIXED_EMAIL = "admin@example.com", FIXED_PASSWORD = "12345";
+    const loginPage = document.getElementById("loginPage"),
+          app = document.getElementById("app"),
+          signedInEmail = document.getElementById("signedInEmail");
+
+    let leafletMapInstance, mapMarkers = {}, currentDisaster = null;
+
+    function handleLogin(){
+      const email = document.getElementById("loginEmail").value;
+      const pass = document.getElementById("loginPassword").value;
+      if (email===FIXED_EMAIL && pass===FIXED_PASSWORD){
+        loginPage.classList.add("hidden");
+        app.classList.remove("hidden");
+        signedInEmail.textContent = email;
+        if (!leafletMapInstance) initMap();
+        setTimeout(()=>{ if (leafletMapInstance) leafletMapInstance.invalidateSize(); }, 120);
+      } else alert("Invalid credentials");
+    }
+    function logout(){ app.classList.add("hidden"); loginPage.classList.remove("hidden"); }
+
+    function initMap() {
+      // India bounds — map panning limited to roughly India area
+      var indiaBounds = L.latLngBounds(L.latLng(6.0, 68.0), L.latLng(38.0, 97.0));
+      leafletMapInstance = L.map("indiaMap", { scrollWheelZoom: false, maxBounds: indiaBounds, minZoom: 5 }).setView([20.5937, 78.9629], 5);
+
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        attribution:"&copy; OpenStreetMap & CARTO",
+        subdomains:"abcd",
+        maxZoom:20
+      }).addTo(leafletMapInstance);
+
+      // NOTE: we removed any black rectangle/outline — map will show normally without stroke
+    }
+
+    const cityLatLngCoords = {
+      "Delhi": {lat:28.6139, lng:77.2090},
+      "Mumbai": {lat:19.0760, lng:72.8777},
+      "Kolkata": {lat:22.5726, lng:88.3639},
+      "Chennai": {lat:13.0827, lng:80.2707},
+      "Shimla": {lat:31.1048, lng:77.1734},
+      "Assam": {lat:26.2006, lng:92.9376},
+      "Lucknow": {lat:26.8467, lng:80.9462},
+      "Darjeeling": {lat:27.0410, lng:88.2663},
+      "Munnar": {lat:10.0889, lng:77.0595},
+      "Gangtok": {lat:27.3389, lng:88.6065},
+      "Shillong": {lat:25.5788, lng:91.8933},
+      "Gujarat": {lat:22.2587, lng:71.1924},
+      "Bihar": {lat:25.0961, lng:85.3131},
+      "Nepal Border": {lat:27.7172, lng:85.3240},
+      "North East": {lat:26.2006, lng:92.9376}
+    };
+
+    function riskColor(p){ return p>=0.7?"#ef4444":p>=0.4?"#f59e0b":"#10b981"; }
+    function riskText(p){ return p>=0.7?"High":p>=0.4?"Medium":"Low"; }
+
+    async function fetchPredictions(disaster){
+      currentDisaster = disaster;
+      document.getElementById("activeAlertsList").innerHTML =
+        `<li class="p-3 text-slate-400">Loading ${disaster} data...</li>`;
+      document.getElementById("forecastChart").innerHTML = "";
+      document.getElementById("forecastTitle").textContent = "7-Day Risk Forecast";
+      document.getElementById("forecastSubtitle").textContent = "Fetching data...";
+
+      for (let key in mapMarkers) mapMarkers[key].remove();
+      mapMarkers={};
+
+      try {
+        // calls backend /api/predict/<disaster> — your app.py should implement this route
+        const res = await fetch(`/api/predict/${disaster}`);
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || "API returned error");
+        renderActiveAlertsList(data.activeAlerts, disaster);
+        renderForecastChart(data.forecast.daily, data.forecast.location);
+      } catch(e){
+        alert("Error: "+e.message);
+      }
+    }
+
+    function renderActiveAlertsList(alerts, disaster){
+      const ul=document.getElementById("activeAlertsList"); ul.innerHTML="";
+      alerts.forEach(a=>{
+        const li=document.createElement("li");
+        li.className="p-3 bg-[#061022] rounded cursor-pointer hover:bg-[#0a1420] flex justify-between items-center";
+        li.innerHTML=`<div><div class="font-semibold">${a.location}</div><div class="text-xs text-slate-400">${disaster} risk</div></div>
+                      <div style="text-align:right"><div style="color:${riskColor(a.probability)};font-weight:600">${(a.probability*100).toFixed(0)}%</div><div class="text-xs text-slate-400">${riskText(a.probability)}</div></div>`;
+        li.onclick=()=>updateForecastForLocation(a.location, disaster);
+        ul.appendChild(li);
+
+        const coords = cityLatLngCoords[a.location];
+        if (coords && leafletMapInstance){
+          const marker=L.circleMarker([coords.lat, coords.lng],{
+            radius:8, fillOpacity:0.95, color:"#fff", weight:2, fillColor:riskColor(a.probability)
+          }).addTo(leafletMapInstance);
+          marker.bindPopup(`<b>${a.location}</b><br>${riskText(a.probability)} Risk`);
+          marker.on("click", ()=>updateForecastForLocation(a.location, disaster));
+          mapMarkers[a.location]=marker;
+        }
+      });
+    }
+
+    function renderForecastChart(daily, location){
+      const chart=document.getElementById("forecastChart"); chart.innerHTML="";
+      document.getElementById("forecastTitle").textContent=`7-Day Risk Forecast: ${location}`;
+      document.getElementById("forecastSubtitle").textContent=`Predicted risk levels for ${location}`;
+      const maxPx = 160;
+      daily.forEach(day=>{
+        const col = document.createElement("div");
+        col.className = "forecast-column";
+        const pct = document.createElement("div");
+        pct.className = "text-xs mb-1";
+        // day may have property day_label (backend provided). fallback to day.day if not present.
+        pct.textContent = ((day.probability||0)*100).toFixed(0)+"%";
+        const bar = document.createElement("div");
+        bar.className="forecast-bar";
+        const pxHeight=Math.max(6,Math.round((day.probability||0)*maxPx));
+        bar.style.height=pxHeight+"px"; bar.style.background=riskColor(day.probability||0);
+        const lbl=document.createElement("div");
+        lbl.className="chart-label"; lbl.textContent=(day.day_label||day.day||"");
+        col.appendChild(pct); col.appendChild(bar); col.appendChild(lbl);
+        chart.appendChild(col);
+      });
+    }
+
+    async function updateForecastForLocation(location, disaster){
+      try{
+        const res=await fetch(`/api/predict/${disaster}?location=${encodeURIComponent(location)}`);
+        const data=await res.json();
+        if (!data.ok) throw new Error(data.message || "API error");
+        renderForecastChart(data.forecast.daily, location);
+      }catch(e){ alert("Failed: "+e.message); }
+    }
+
+    // SOS: send coords to backend and show marker
+    async function sendSOS(){
+      if (!navigator.geolocation) {
+        alert("❌ Geolocation not supported");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(async (pos)=>{
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        try{
+          const res = await fetch("/api/sos", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({lat, lon})
+          });
+          const data = await res.json();
+          if (data.ok){
+            alert("🚨 SOS sent successfully with your location!");
+            if (leafletMapInstance){
+              const sosMarker = L.marker([lat, lon], {
+                icon: L.divIcon({
+                  className: "sos-marker",
+                  html: "🚨",
+                  iconSize: [28, 28],
+                  iconAnchor: [14, 28]
+                })
+              }).addTo(leafletMapInstance);
+              sosMarker.bindPopup(`<b>SOS Alert!</b><br>Lat: ${lat.toFixed(3)}, Lon: ${lon.toFixed(3)}`).openPopup();
+            }
+          } else {
+            alert("❌ Failed: " + data.message);
+          }
+        }catch(e){ alert("⚠️ Error sending SOS: "+e.message); }
+      }, (err)=>{ alert("⚠️ Failed to get location: " + err.message); });
+    }
+  </script>
+</body>
+</html>
